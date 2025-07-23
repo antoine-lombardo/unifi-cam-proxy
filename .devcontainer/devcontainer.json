@@ -6,7 +6,11 @@
       "extensions": ["ms-python.python"]
     }
   },
-  "runArgs": ["--network=lan_net",
-  "--mac-address=__:__:__:__:__:__"],
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg iputils-ping && pip install -r requirements.txt"
+  "runArgs": [
+    "--network=lan_net"
+  ],
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg iputils-ping && pip install -r requirements.txt",
+  "containerEnv": {
+    "CAMERA_TYPE": "UVC_G4_PRO"
+  }
 }

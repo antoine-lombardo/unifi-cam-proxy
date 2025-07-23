@@ -1,1 +1,8 @@
+# Ignore all Python bytecode cache directories
+__pycache__/
 
+# Ignore compiled Python bytecode files
+*.pyc
+
+# Ignore local camera settings file (auto-generated, not meant to be version-controlled)
+Unifi/camera_data/settings.json

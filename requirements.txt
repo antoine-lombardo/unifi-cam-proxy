@@ -1,0 +1,9 @@
+requests
+av
+numpy
+paramiko
+aiohttp
+ffmpeg
+fastapi
+uvicorn
+zeroconf

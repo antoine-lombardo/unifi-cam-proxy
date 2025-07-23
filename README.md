@@ -88,7 +88,7 @@ Raw: 01 00 00 00
 ### Adoption Flow
 
 If the camera is discovered, it will appear in the **UniFi Protect** UI.  
-Click **"Add"** to add the device, then **"Adopt"** to begin management.
+Click **"Adopt"** to begin managing the device.
 
 ---
 
@@ -119,6 +119,16 @@ Payload Example:
 }
 ```
 
+## DEV Container
+
+Before launching the dev container, you need to create a custom Docker network using macvlan:
+docker network create -d macvlan \
+  --subnet=192.168.0.0/24 \
+  --gateway=192.168.0.1 \
+  -o parent=lan0 \
+  lan_net
+
+Replace lan0 with your actual network interface name (e.g., eth0, enp3s0, etc.).
 
 ## Donations
 
