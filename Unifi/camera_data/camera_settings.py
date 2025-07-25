@@ -2,12 +2,14 @@ import json
 import os
 import sys
 import socket
+import threading
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from .camera_models import CameraModelDatabase
 
 class CameraSettings:
     def __init__(self, settings_file=None):
+        self._lock = threading.RLock()
         self.settings_file = settings_file or os.path.join(os.path.dirname(__file__), "settings.json")
         self.settings = {}
 
@@ -141,7 +143,7 @@ class CameraSettings:
             "isProvisioned": True,             # True if the device has completed provisioning
             "isRebooting": False,              # True if the device is rebooting
             "isSshEnabled": False,             # SSH enabled status
-            "canAdopt": False,                 # Whether the controller is able to adopt the device
+            "canAdopt": True,                 # Whether the controller is able to adopt the device
             "isAttemptingToConnect": False,    # True if device is trying to connect to controller
             "uplinkDevice": {                  # Info about the upstream switch or AP
                 "name": "",                    # Uplink device name
@@ -262,7 +264,7 @@ class CameraSettings:
             "hasWifi": False,                  # Whether Wi-Fi is supported
             "audioBitrate": 64000,             # Audio bitrate setting (bps)
             "canManage": False,                # If current user can manage the device
-            "isManaged": True,                 # Whether device is fully managed/adopted
+            "isManaged": False,                 # Whether device is fully managed/adopted
             "marketName": "",                  # Commercial model name
             "is4K": False,                     # True if supports 4K resolution
             "is2K": True,                      # True if supports 2K resolution
@@ -273,21 +275,112 @@ class CameraSettings:
             "modelKey": "camera"               # Unique type key in the UniFi API system
         }
 
-    def _save(self):
-        with open(self.settings_file, "w") as f:
-            json.dump(self.settings, f, indent=2)
+    def __getitem__(self, key):
+        """
+        Thread-safe read access to a setting.
+
+        Usage:
+            value = settings["isConnected"]
+        """
+        with self._lock:
+            return self.settings[key]
+
+    def __setitem__(self, key, value):
+        """
+        Thread-safe write access to a setting. Automatically persists to disk.
+
+        Usage:
+            settings["isUpdating"] = True
+        """
+        with self._lock:
+            self.settings[key] = value
+            self._save()
+
+    def __contains__(self, key):
+        """
+        Thread-safe key existence check.
+
+        Usage:
+            if "mac" in settings:
+                ...
+        """
+        with self._lock:
+            return key in self.settings
 
     def get(self, key, default=None):
-        return self.settings.get(key, default)
+        """
+        Thread-safe retrieval with fallback.
 
-    def set(self, key, value):
-        self.settings[key] = value
-        self._save()
+        Usage:
+            mac = settings.get("mac", "00:00:00:00:00:00")
+        """
+        with self._lock:
+            return self.settings.get(key, default)
 
-    @property
-    def mac_bytes(self):
-        return bytes.fromhex(self.get("mac").replace(":", ""))
+    def update(self, updates: dict):
+        """
+        Thread-safe bulk update. Automatically persists to disk.
 
-    @property
-    def ip_bytes(self):
-        return socket.inet_aton(self.get("host"))
+        Usage:
+            settings.update({
+                "firmwareVersion": "v5.0.0",
+                "isUpdating": False
+            })
+        """
+        with self._lock:
+            self.settings.update(updates)
+            self._save()
+
+    def _save(self):
+        with self._lock:
+            with open(self.settings_file, "w") as f:
+                json.dump(self.settings, f, indent=2)
+
+    def _get_nested_value(self, dotted_key, default=None):
+        """
+        Safely gets a nested value like 'uplinkDevice.mac'.
+        Returns `default` if any part of the path is missing.
+        """
+        keys = dotted_key.split(".")
+        value = self.settings
+        for key in keys:
+            if not isinstance(value, dict):
+                return default
+            value = value.get(key, default)
+            if value is default:
+                break
+        return value
+
+    def mac_bytes(self, key="mac"):
+        """
+        Returns the MAC address (from key path) as raw bytes.
+        Returns None if value is missing or malformed.
+
+        Usage:
+            settings.mac_bytes("mac")
+            settings.mac_bytes("uplinkDevice.mac")
+        """
+        with self._lock:
+            mac_str = self._get_nested_value(key)
+        if mac_str:
+            return bytes.fromhex(mac_str.replace(":", ""))
+        return None
+
+
+    def ip_bytes(self, key="host"):
+        """
+        Returns the IP address (from key path) as raw bytes.
+        Returns None if value is missing or malformed.
+
+        Usage:
+            settings.ip_bytes("host")
+            settings.ip_bytes("wifiConnectionState.apMgmtIp")
+        """
+        with self._lock:
+            ip_str = self._get_nested_value(key)
+        if ip_str:
+            try:
+                return socket.inet_aton(ip_str)
+            except OSError:
+                return None
+        return None

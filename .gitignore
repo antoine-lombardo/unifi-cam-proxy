@@ -6,3 +6,10 @@ __pycache__/
 
 # Ignore local camera settings file (auto-generated, not meant to be version-controlled)
 Unifi/camera_data/settings.json
+
+# ingnore generate ssl cert
+Unifi/key.pem
+Unifi/cert.pem
+
+#ignore test scripts
+test-dev/

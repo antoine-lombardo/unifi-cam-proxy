@@ -1,68 +1,50 @@
 from camera_data.camera_settings import CameraSettings
 from discovery_responder import DiscoveryResponder
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from api_server import VerboseAPIServer
 import threading
-import json
+import time
 
-# ---- HTTPS API Logging Server ----
-class VerboseAPIHandler(BaseHTTPRequestHandler):
-    def log_request_info(self):
-        print("\n" + "="*60)
-        print(f"[{self.command}] {self.client_address[0]}:{self.client_address[1]} {self.path}")
-        print("Headers:")
-        for k, v in self.headers.items():
-            print(f"  {k}: {v}")
-        if self.command in ["POST", "PUT"]:
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length)
-            try:
-                print("JSON Body:")
-                print(json.dumps(json.loads(body), indent=2))
-            except:
-                print("Raw Body:")
-                print(body.decode(errors='replace'))
+def increment_uptime(settings):
+    while True:
+        time.sleep(1)
+        now_ms = int(time.time() * 1000)
+        up_since = settings.get("upSince")
+        if up_since:
+            settings["uptime"] = int((now_ms - up_since) / 1000)
 
-    def do_GET(self):
-        self.log_request_info()
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-
-    def do_POST(self):
-        self.log_request_info()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"status": "ok"}).encode())
-
-    def do_PUT(self):
-        self.do_POST()
-
-    def do_DELETE(self):
-        self.log_request_info()
-        self.send_response(204)
-        self.end_headers()
-
-def run_http_server(port):
-    def _thread():
-        server = HTTPServer(("0.0.0.0", port), VerboseAPIHandler)
-        print(f"[+] HTTP API server running on port {port}")
-        server.serve_forever()
-    threading.Thread(target=_thread, daemon=True).start()
-
-# ---- Main Entrypoint ----
-if __name__ == "__main__":
+def main():
     settings = CameraSettings()
 
-    MAC = settings.mac_bytes
-    IP = settings.ip_bytes
-    PRIMARY_ADDRESS = MAC + IP
+    now_ms = int(time.time() * 1000)
 
-    responder = DiscoveryResponder(settings)
-    responder.start()
+    # Start uptime thread
+    settings.update({
+        "upSince": now_ms,
+        "lastSeen": None,
+        "uptime": 0,
+        "connectedSince": None
+    })
+    threading.Thread(target=increment_uptime, args=(settings,), daemon=True).start()
+    print("[+] Uptime counter started")
 
-    # HTTP port
-    run_http_server(80)
+    # Start discovery responder in its own thread
+    if settings["canAdopt"]:
+        responder = DiscoveryResponder(settings)
+        threading.Thread(target=responder.start, daemon=True).start()
+        print("[+] Discovery responder started")
+    else:
+        print("[-] Discovery responder skipped canAdopt = False")
 
-    # Keep the main thread alive
+    # Start HTTP API server on port 80
+    api_server_80 = VerboseAPIServer(port=80, settings=settings)
+    threading.Thread(target=api_server_80.start, daemon=True).start()
+
+    # Start HTTPS API server on port 443 with SSL enabled
+    api_server_443 = VerboseAPIServer(port=443, use_ssl=True, settings=settings)
+    threading.Thread(target=api_server_443.start, daemon=True).start()
+
+    # Keep main thread alive
     threading.Event().wait()
+
+if __name__ == "__main__":
+    main()

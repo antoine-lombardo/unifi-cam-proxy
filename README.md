@@ -17,14 +17,11 @@ Things that work:
 
 ## Roadmap
 - [x] Device Discovery
-  - [ ] Document `1284` – Maps camera system IDs to camera types, platforms, and GUIDs
-  - [ ] Document `13701` – UniFi Protect discovery scanner logic
-  - [ ] Document `42942` – DeviceType model structure
-  - [ ] Document `13701` – Discovery field types and helper functions
-- [ ] Camera Adoption
-  - [ ] Handle `POST /api/1.2/manage`
+- [x] Camera Adoption
+  - [x] Handle `POST /api/1.2/manage`
   - [ ] Implement ongoing API message handling
-- [ ] RTSP Stream
+- [ ] WSS
+  - [ ] 🛑 WSS adoption handshake (currently missing endpoint)
   - [ ] Simulate RTSP stream output
   - [ ] Handle motion detection event simulation
 
