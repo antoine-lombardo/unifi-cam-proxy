@@ -104,6 +104,18 @@ Raw: 01 00 00 00
 
 ### ✅ Adoption Flow
 
+```mermaid
+graph TD
+  A[Protect Startup] --> B[services.js main entrypoint]
+  B --> C[camerasMiddleware - 20982]
+  C --> D[require - 54155]
+  D --> E["/camera/1.0/ws" WebSocket Server - from 54155]
+  C --> F[cameras.adopt53148 - tryAdopt30581 - provision75165]
+  F --> G[Camera Onboarding - Settings Sync 20982]
+  E --> H[Camera connects via WSS - Inside 54155 after upgrade event]
+  H --> I[Device Authentication & Sync - Also in 54155, delegates to other subsystems]
+```
+
 Once the controller receives a valid response, the camera will appear in the **UniFi Protect** UI as **ready for adoption**.
 
 Click **"Adopt"** to begin managing the camera.
