@@ -3,15 +3,17 @@ import os
 import sys
 import socket
 import threading
+import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from .camera_models import CameraModelDatabase
 
 class CameraSettings:
-    def __init__(self, settings_file=None):
+    def __init__(self, settings_file=None, logger=None):
         self._lock = threading.RLock()
         self.settings_file = settings_file or os.path.join(os.path.dirname(__file__), "settings.json")
         self.settings = {}
+        self.logger = logger or logging.getLogger(__name__)
 
         self._load_or_initialize()
         self._ensure_mac_and_ip()
@@ -23,9 +25,9 @@ class CameraSettings:
         if os.path.exists(self.settings_file):
             with open(self.settings_file, "r") as f:
                 self.settings = json.load(f)
-            print("[=] Loaded existing settings.")
+            self.logger.info("Loaded existing settings from %s", self.settings_file)
         else:
-            print("[*] Creating default settings...")
+            self.logger.info("Creating default settings...")
             self.settings = self._default_settings()
 
     def _ensure_mac_and_ip(self):
@@ -33,43 +35,43 @@ class CameraSettings:
             mac = self._get_mac_address()
             if mac:
                 self.settings["mac"] = mac
-                print(f"[+] MAC address set: {mac}")
+                self.logger.info("MAC address set: %s", mac)
             else:
-                print("[!] Failed to get MAC address.")
+                self.logger.error("Failed to get MAC address.")
                 exit(1)
 
         if not self.settings.get("host"):
             ip = self._get_ip_address()
             if ip:
                 self.settings["host"] = ip
-                print(f"[+] IP address set: {ip}")
+                self.logger.info("IP address set: %s", ip)
             else:
-                print("[!] Failed to get IP address.")
+                self.logger.error("Failed to get IP address.")
                 exit(1)
     
     def _ensure_platform_and_sysid(self):
         camera_type = self.settings.get("type")
 
         if not camera_type:
-            print("[!] Camera type not set in settings.")
+            self.logger.error("Camera type not set in settings.")
             exit(1)
 
         if not self.settings.get("platform"):
             platform = CameraModelDatabase.get_platform(camera_type)
             if platform:
                 self.settings["platform"] = platform
-                print(f"[+] Platform set: {platform}")
+                self.logger.info("Platform set: %s", platform)
             else:
-                print(f"[!] Unknown platform for type: {camera_type}")
+                self.logger.error("Unknown platform for type: %s", camera_type)
                 exit(1)
 
         if not self.settings.get("sysid"):
             sysid = CameraModelDatabase.CameraSysIds.get(camera_type)
             if sysid:
                 self.settings["sysid"] = sysid
-                print(f"[+] System ID set: 0x{sysid:04x}")
+                self.logger.info("System ID set: 0x%04x", sysid)
             else:
-                print(f"[!] Unknown system ID for type: {camera_type}")
+                self.logger.error("Unknown system ID for type: %s", camera_type)
                 exit(1)
 
     def _get_mac_address(self, interface="eth0"):
@@ -95,22 +97,22 @@ class CameraSettings:
         # Exit early if type or platform is missing and we can't proceed
         if not self.settings.get("type") or not self.settings.get("platform"):
             if not env_type:
-                print("[!] CAMERA_TYPE environment variable is required to set type or platform.")
+                self.logger.error("CAMERA_TYPE environment variable is required to set type or platform.")
                 exit(1)
 
             # Set type if missing
             if not self.settings.get("type"):
                 self.settings["type"] = env_type
-                print(f"[+] Set camera type: {env_type}")
+                self.logger.info("Set camera type: %s", env_type)
 
             # Set platform if missing
             if not self.settings.get("platform"):
                 platform = CameraModelDatabase.get_platform(env_type)
                 if platform:
                     self.settings["platform"] = platform
-                    print(f"[+] Set camera platform: {platform}")
+                    self.logger.info("Set camera platform: %s", platform)
                 else:
-                    print(f"[!] Unknown platform for camera type: {env_type}")
+                    self.logger.error("Unknown platform for camera type: %s", env_type)
                     exit(1)
     
     def _default_settings(self):
@@ -128,7 +130,7 @@ class CameraSettings:
             "connectedSince": 0,               # Timestamp since when the device has been connected
             "state": "CONNECTED",              # Connection state (e.g., CONNECTED, DISCONNECTED)
             "lastDisconnect": 0,               # Timestamp of last disconnection
-            "hardwareRevision": "",            # Hardware revision string
+            "hardwareRevision": "19",            # Hardware revision string
             "firmwareVersion": "",             # Current firmware version
             "latestFirmwareVersion": "",       # Latest available firmware version
             "latestFirmwareSizeBytes": 0,      # Size of the latest firmware image

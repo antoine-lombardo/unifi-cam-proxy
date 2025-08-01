@@ -3,27 +3,27 @@ import ssl
 import threading
 import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from camera_data.camera_settings import CameraSettings
-from wss_handler import WSSHandler
 import json
 import time
+import logging
+from wss_handler import WSSHandler
 
 latest_session = {}
 
 class VerboseAPIHandler(BaseHTTPRequestHandler):
+    logger = logging.getLogger("camera_app")  # Default, can be overridden
+    settings = None
+
     def log_request_info(self, body=None):
-        print("\n" + "=" * 60)
-        print(f"[{self.command}] {self.client_address[0]}:{self.client_address[1]} {self.path}")
-        print("Headers:")
+        self.logger.info(f"[{self.command}] {self.client_address[0]}:{self.client_address[1]} {self.path}")
+        self.logger.debug("Headers:")
         for k, v in self.headers.items():
-            print(f"  {k}: {v}")
+            self.logger.debug(f"  {k}: {v}")
         if body:
             try:
-                print("JSON Body:")
-                print(json.dumps(json.loads(body), indent=2))
+                self.logger.debug("JSON Body:\n" + json.dumps(json.loads(body), indent=2))
             except Exception:
-                print("Raw Body:")
-                print(body.decode(errors='replace'))
+                self.logger.debug("Raw Body:\n" + body.decode(errors='replace'))
 
     def do_GET(self):
         self.log_request_info()
@@ -46,11 +46,13 @@ class VerboseAPIHandler(BaseHTTPRequestHandler):
                 latest_session["consoleId"] = data.get("mgmt", {}).get("consoleId")
                 latest_session["raw"] = data
 
-                print("[*] Stored management session:")
-                print(json.dumps(latest_session, indent=2))
+                self.settings["connectionHost"] = data.get("mgmt", {}).get("hosts")
+
+                self.logger.info("[*] Stored management session:")
+                self.logger.debug(json.dumps(latest_session, indent=2))
 
             except Exception as e:
-                print(f"[!] Failed to parse /api/1.2/manage body: {e}")
+                self.logger.error(f"[!] Failed to parse /api/1.2/manage body: {e}")
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -59,10 +61,13 @@ class VerboseAPIHandler(BaseHTTPRequestHandler):
 
         if self.settings and self.settings["canAdopt"]:
             self.settings["canAdopt"] = False
-            print("[*] Updated settings: canAdopt = False")
+            self.logger.info("[*] Updated settings: canAdopt = False")
+
         now_ms = int(time.time() * 1000)
         self.settings["lastSeen"] = now_ms
-    '''
+
+        # Uncomment if you want to auto-start WSS after adoption
+        """
         handler = WSSHandler(
             token=latest_session["token"],
             host=latest_session["hosts"][0].split(":")[0],
@@ -70,7 +75,8 @@ class VerboseAPIHandler(BaseHTTPRequestHandler):
             verify_cert=False
         )
         threading.Thread(target=handler.run, daemon=True).start()
-    '''
+        """
+
     def do_PUT(self):
         self.do_POST()
 
@@ -81,7 +87,7 @@ class VerboseAPIHandler(BaseHTTPRequestHandler):
 
 
 class VerboseAPIServer:
-    def __init__(self, port=8000, use_ssl=False, certfile="cert.pem", keyfile="key.pem", settings=None):
+    def __init__(self, port=8000, use_ssl=False, certfile="cert.pem", keyfile="key.pem", settings=None, logger=None):
         self.port = port
         self.use_ssl = use_ssl
         self.certfile = certfile
@@ -89,7 +95,9 @@ class VerboseAPIServer:
         self.server = HTTPServer(("0.0.0.0", port), VerboseAPIHandler)
         self.settings = settings
 
+        # Apply shared logger and settings to handler
         VerboseAPIHandler.settings = self.settings
+        VerboseAPIHandler.logger = logger or logging.getLogger("camera_app")
 
         if self.use_ssl:
             self._ensure_cert_exists()
@@ -104,7 +112,7 @@ class VerboseAPIServer:
         if os.path.exists(self.certfile) and os.path.exists(self.keyfile):
             return
 
-        print("[!] cert.pem or key.pem not found. Generating self-signed certificate...")
+        VerboseAPIHandler.logger.warning("[!] cert.pem or key.pem not found. Generating self-signed certificate...")
 
         subprocess.run([
             "openssl", "req", "-x509", "-newkey", "rsa:2048",
@@ -113,12 +121,12 @@ class VerboseAPIServer:
             "-subj", "/CN=localhost"
         ], check=True)
 
-        print("[+] Self-signed certificate generated.")
+        VerboseAPIHandler.logger.info("[+] Self-signed certificate generated.")
 
     def start(self):
         def _thread():
             protocol = "HTTPS" if self.use_ssl else "HTTP"
-            print(f"[+] {protocol} API server running on port {self.port}")
+            VerboseAPIHandler.logger.info(f"[+] {protocol} API server running on port {self.port}")
             self.server.serve_forever()
 
         thread = threading.Thread(target=_thread, daemon=True)

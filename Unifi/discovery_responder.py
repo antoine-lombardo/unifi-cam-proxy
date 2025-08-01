@@ -1,6 +1,6 @@
 import socket
 import struct
-import time
+import logging
 
 
 class DiscoveryResponder:
@@ -8,8 +8,9 @@ class DiscoveryResponder:
     VERSION = 1
     CMD_INFO = 0
 
-    def __init__(self, settings):
+    def __init__(self, settings, logger=None):
         self.settings = settings
+        self.log = logger or logging.getLogger("camera_app")
         self.primary_address = self.settings.mac_bytes("mac") + self.settings.ip_bytes("host")
 
     def build_field(self, field_id, data):
@@ -35,11 +36,6 @@ class DiscoveryResponder:
         sysid_le = struct.pack("<H", self.settings["sysid"])
         payload += self.build_field(16, sysid_le)
 
-        # CUSTOM_UNIFI_FIELDS – optional subfields
-        # If you have BLE_BRIDGE_PORT or others, pack as:
-        # subfields = self.build_field(1, struct.pack(">H", 18888))  # BLE_BRIDGE_PORT example
-        # payload += self.build_field(130, subfields)
-
         # DEVICE_DEFAULT_CREDENTIALS
         payload += self.build_field(44, struct.pack("B", 1))
 
@@ -64,11 +60,11 @@ class DiscoveryResponder:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("0.0.0.0", self.DISCOVERY_PORT))
 
-        print(f"[*] Listening for discovery on {self.settings['host']}:{self.DISCOVERY_PORT}")
+        self.log.info(f"Listening for discovery on {self.settings['host']}:{self.DISCOVERY_PORT}")
 
         while True:
             if not self.settings["canAdopt"]:
-                print("[x] Exiting discovery loop because canAdopt is False.")
+                self.log.warning("Exiting discovery loop because canAdopt is False.")
                 break
 
             sock.settimeout(1.0)
@@ -77,9 +73,9 @@ class DiscoveryResponder:
             except socket.timeout:
                 continue
 
-            print(f"[>] Received discovery from {addr}\n    Raw: {data.hex()}")
+            self.log.debug(f"Received discovery from {addr} | Raw: {data.hex()}")
 
             if data[:4] == b"\x01\x00\x00\x00":
                 response = self.build_response()
-                print("[<] Sending discovery response:\n    " + response.hex())
+                self.log.debug(f"Sending discovery response: {response.hex()}")
                 sock.sendto(response, addr)

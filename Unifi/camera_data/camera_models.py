@@ -1,5 +1,8 @@
 class CameraModelDatabase:
+        # platform: sysid
+        # UVC G4 Bullet": "s5l"
     CameraPlatformsByType = {
+        
         # Early cameras
         "UVC": "s2l",
         "UVC_PRO": "s2l",
