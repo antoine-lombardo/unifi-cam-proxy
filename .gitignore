@@ -8,8 +8,8 @@ __pycache__/
 Unifi/camera_data/settings.json
 
 # ingnore generate ssl cert
-Unifi/key.pem
-Unifi/cert.pem
+*.pem
+*.crt
 
 #ignore test scripts
 test-dev/
