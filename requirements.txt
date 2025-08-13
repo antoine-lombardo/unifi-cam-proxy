@@ -10,3 +10,4 @@ zeroconf
 websockets
 flask
 cryptography
+Pillow

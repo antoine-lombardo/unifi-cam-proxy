@@ -1,4 +1,3 @@
-# main.py
 from camera_data.camera_settings import CameraSettings
 from discovery_responder import DiscoveryResponder
 from api_server import VerboseAPIServer
@@ -6,11 +5,7 @@ from utils.logging_utils import setup_logger
 from utils.uptime_utils import increment_uptime
 from Unifi.wss_manager import WssManager
 import threading, time, logging, signal
-
-def start_wss(host, port, token, settings):
-    # TODO: replace with your real websocket client
-    # This is just a placeholder; your real client likely blocks and reconnects internally.
-    print(f"[WSS] connect -> {host}:{port} token={token[:6]}...")
+from Unifi.upload_server import start_upload_server
 
 def main():
     settings = CameraSettings()
@@ -20,6 +15,7 @@ def main():
     api_log_level = settings.get("logging.api.level", logging.DEBUG)
     disc_log_level = settings.get("logging.discovery.level", logging.INFO)
     wss_log_level = settings.get("logging.wss.level", logging.INFO)
+    upload_server_log_level = settings.get("logging.upload_server.level", logging.INFO)
 
     # Uptime seed
     now_ms = int(time.time() * 1000)
@@ -47,8 +43,12 @@ def main():
     threading.Thread(target=api_server.start, daemon=True, name="APIServerThread").start()
     api_log.info("HTTPS API server started on port 443")
 
+    # start Upload server
+    upload_server_log = setup_logger("upload_server", upload_server_log_level)
+    start_upload_server(logger=upload_server_log)
+
     # WSS manager (waits for token/host)
-    wss_log = setup_logger("wss", settings.get("logging.wss.level", logging.INFO))
+    wss_log = setup_logger("wss", wss_log_level)
     wss_mgr = WssManager(settings, token_event, stop_event, wss_log)
     wss_mgr.start()
 
