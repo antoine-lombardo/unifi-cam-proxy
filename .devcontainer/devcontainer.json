@@ -1,6 +1,7 @@
 {
   "name": "Unifi Cam Proxy Dev",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "workspaceFolder": "/workspaces/unifi-cam-proxy/Unifi",
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python"]
@@ -9,8 +10,12 @@
   "runArgs": [
     "--network=lan_net"
   ],
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg iputils-ping && pip install -r requirements.txt",
+  "mounts": [
+    "source=/etc/localtime,target=/etc/localtime,type=bind,readonly",
+    "source=/etc/timezone,target=/etc/timezone,type=bind,readonly"
+  ],
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg iputils-ping && pip install -r ../requirements.txt",
   "containerEnv": {
-    "CAMERA_TYPE": "UVC_G4_PRO"
+    "CAMERA_MODEL": "UVC_G4_DOME"
   }
 }

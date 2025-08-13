@@ -8,3 +8,5 @@ fastapi
 uvicorn
 zeroconf
 websockets
+flask
+cryptography

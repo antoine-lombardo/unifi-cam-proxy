@@ -13,13 +13,15 @@ class CameraSettings:
         self._lock = threading.RLock()
         self.settings_file = settings_file or os.path.join(os.path.dirname(__file__), "settings.json")
         self.settings = {}
+        self._dirty = False
         self.logger = logger or logging.getLogger(__name__)
 
         self._load_or_initialize()
-        self._ensure_mac_and_ip()
-        self._set_type_and_platform_from_env()
+        self._get_ip_address()
+        self._get_mac_address()
         self._ensure_platform_and_sysid()
-        self._save()
+        if self._dirty:
+            self._save()
 
     def _load_or_initialize(self):
         if os.path.exists(self.settings_file):
@@ -29,299 +31,130 @@ class CameraSettings:
         else:
             self.logger.info("Creating default settings...")
             self.settings = self._default_settings()
+            self._save()
 
-    def _ensure_mac_and_ip(self):
-        if not self.settings.get("mac"):
-            mac = self._get_mac_address()
-            if mac:
-                self.settings["mac"] = mac
-                self.logger.info("MAC address set: %s", mac)
-            else:
-                self.logger.error("Failed to get MAC address.")
-                exit(1)
-
-        if not self.settings.get("host"):
-            ip = self._get_ip_address()
-            if ip:
-                self.settings["host"] = ip
-                self.logger.info("IP address set: %s", ip)
-            else:
-                self.logger.error("Failed to get IP address.")
-                exit(1)
-    
     def _ensure_platform_and_sysid(self):
-        camera_type = self.settings.get("type")
-
-        if not camera_type:
-            self.logger.error("Camera type not set in settings.")
-            exit(1)
+        changed = False
+        if not self.settings.get("marketName"):
+            model = os.environ.get("CAMERA_MODEL", "").strip()
+            if not model:
+                self.logger.error("CAMERA_MODEL environment variable is required to set type or platform.")
+                sys.exit(1)
+            changed |= self._set_nested_value("marketName", model)
 
         if not self.settings.get("platform"):
-            platform = CameraModelDatabase.get_platform(camera_type)
-            if platform:
-                self.settings["platform"] = platform
-                self.logger.info("Platform set: %s", platform)
-            else:
-                self.logger.error("Unknown platform for type: %s", camera_type)
-                exit(1)
+            platform = CameraModelDatabase.get_platform(self.settings["marketName"])
+            if not platform:
+                self.logger.error(f"Unknown platform for type: {self.settings['marketName']}")
+                sys.exit(1)
+            changed |= self._set_nested_value("platform", platform)
 
         if not self.settings.get("sysid"):
-            sysid = CameraModelDatabase.CameraSysIds.get(camera_type)
-            if sysid:
-                self.settings["sysid"] = sysid
-                self.logger.info("System ID set: 0x%04x", sysid)
-            else:
-                self.logger.error("Unknown system ID for type: %s", camera_type)
-                exit(1)
+            sysid = CameraModelDatabase.CameraSysIds.get(self.settings["marketName"])
+            if sysid is None:
+                self.logger.error(f"Unknown system ID for type: {self.settings['marketName']}")
+                sys.exit(1)
+            changed |= self._set_nested_value("sysid", sysid)
+
+        if not self.settings.get("type"):
+            changed |= self._set_nested_value("type", self.settings["marketName"].replace("_", " "))
+
+        self._dirty |= changed
 
     def _get_mac_address(self, interface="eth0"):
-        try:
-            with open(f"/sys/class/net/{interface}/address") as f:
-                return f.read().strip()
-        except FileNotFoundError:
-            return None
+        if not self.settings.get("mac"):
+            try:
+                with open(f"/sys/class/net/{interface}/address") as f:
+                    mac = f.read().strip()
+                    if not mac:
+                        self.logger.error(f"Empty MAC address for interface '{interface}'.")
+                        sys.exit(1)
+                    self._set_nested_value("mac", mac)
+            except FileNotFoundError:
+                self.logger.error(f"Network interface '{interface}' not found.")
+                sys.exit(1)
 
     def _get_ip_address(self):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except Exception:
-            return None
+        if not self.settings.get("host"):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    ip = s.getsockname()[0]
+                    if not ip:
+                        self.logger.error("Failed to retrieve IP address.")
+                        sys.exit(1)
+                    self._set_nested_value("host", ip)
+            except Exception as e:
+                self.logger.error(f"Failed to get IP address: {e}")
+                sys.exit(1)
 
-    def _set_type_and_platform_from_env(self):
-        env_type = os.environ.get("CAMERA_TYPE", "").strip()
-
-        # Exit early if type or platform is missing and we can't proceed
-        if not self.settings.get("type") or not self.settings.get("platform"):
-            if not env_type:
-                self.logger.error("CAMERA_TYPE environment variable is required to set type or platform.")
-                exit(1)
-
-            # Set type if missing
-            if not self.settings.get("type"):
-                self.settings["type"] = env_type
-                self.logger.info("Set camera type: %s", env_type)
-
-            # Set platform if missing
-            if not self.settings.get("platform"):
-                platform = CameraModelDatabase.get_platform(env_type)
-                if platform:
-                    self.settings["platform"] = platform
-                    self.logger.info("Set camera platform: %s", platform)
-                else:
-                    self.logger.error("Unknown platform for camera type: %s", env_type)
-                    exit(1)
-    
     def _default_settings(self):
         return {
-            "isDeleting": False,               # Flag indicating the device is being deleted
             "mac": "",                         # MAC address of the device
             "host": "",                        # Hostname or IP address
-            "connectionHost": "",              # Direct connection host (used for peer connections)
             "type": "",                        # Device type (e.g., camera, sensor)
             "sysid": "",                       # System hardware identifier
-            "name": "",                        # Friendly display name
-            "upSince": 0,                      # Timestamp when the device last started
-            "uptime": 0,                       # Uptime in seconds
-            "lastSeen": 0,                     # Last time the device was seen by the controller
-            "connectedSince": 0,               # Timestamp since when the device has been connected
-            "state": "CONNECTED",              # Connection state (e.g., CONNECTED, DISCONNECTED)
-            "lastDisconnect": 0,               # Timestamp of last disconnection
-            "hardwareRevision": "19",            # Hardware revision string
-            "firmwareVersion": "",             # Current firmware version
-            "latestFirmwareVersion": "",       # Latest available firmware version
-            "latestFirmwareSizeBytes": 0,      # Size of the latest firmware image
-            "firmwareBuild": "",               # Internal firmware build identifier
-            "isUpdating": False,               # Indicates a firmware update is in progress
-            "isDownloadingFW": False,          # Indicates firmware is currently being downloaded
-            "fwUpdateState": "upToDate",       # Firmware update status
-            "isAdopting": False,               # True if the device is in the adoption process
-            "isRestoring": False,              # True if the device is restoring from backup
-            "isAdopted": True,                 # True if the device is adopted by the controller
-            "isAdoptedByOther": False,         # True if the device is adopted by another controller
-            "isProvisioned": True,             # True if the device has completed provisioning
-            "isRebooting": False,              # True if the device is rebooting
-            "isSshEnabled": False,             # SSH enabled status
-            "canAdopt": True,                 # Whether the controller is able to adopt the device
-            "isAttemptingToConnect": False,    # True if device is trying to connect to controller
-            "uplinkDevice": {                  # Info about the upstream switch or AP
-                "name": "",                    # Uplink device name
-                "mac": "",                     # MAC address of uplink device
-                "uri": ""                      # URI to the device on the controller
-            },
-            "guid": None,                      # Global Unique Identifier
-            "anonymousDeviceId": "",           # Random ID when not adopted
-            "lastMotion": 0,                   # Last motion event timestamp
-            "micVolume": 100,                  # Microphone volume level
-            "isMicEnabled": True,              # Whether microphone is enabled
-            "isRecording": True,               # Whether the device is currently recording
-            "isWirelessUplinkEnabled": True,   # Whether Wi-Fi uplink is enabled
-            "isMotionDetected": False,         # Whether motion is currently being detected
-            "isSmartDetected": False,          # Whether smart detect (e.g., person) is triggered
-            "phyRate": 100,                    # Link rate in Mbps
-            "hdrMode": True,                   # HDR video mode enabled
-            "videoMode": "default",            # Camera's video profile
-            "isProbingForWifi": False,         # Whether device is actively scanning for Wi-Fi
-            "apMac": None,                     # MAC address of connected access point
-            "apRssi": None,                    # RSSI from connected AP
-            "apMgmtIp": None,                  # Management IP of AP
-            "elementInfo": None,               # Internal metadata used by UI
-            "elementInfo": None,               # Internal metadata used by UI
-            "chimeDuration": 0,                # Duration of chime (e.g., for doorbell)
-            "isDark": False,                   # Whether the current scene is dark (night mode)
-            "lastRing": None,                  # Timestamp of the last doorbell ring
-            "isLiveHeatmapEnabled": False,     # Whether heatmap overlay is enabled
-            "eventStats": {                    # Statistics for motion/smart detections
-                "motion": {
-                    "today": 0,                # Motion events today
-                    "average": 0,              # Average daily motion events
-                    "lastDays": [0] * 7,       # Motion event counts over last 7 days
-                    "recentHours": [0] * 13    # Motion event counts over past 13 hours
-                },
-                "smart": {
-                    "today": 0,                # Smart detections today
-                    "average": 0,              # Average smart detections
-                    "lastDays": [0] * 7        # Smart detection counts over last 7 days
-                }
-            },
-            "videoReconfigurationInProgress": False,  # Indicates if video settings are being applied
-            "voltage": None,                   # Current power input (e.g. PoE voltage)
-            "homekitAccessoryId": None,        # Unique ID for Apple HomeKit integration
-            "activePatrolSlot": None,          # Currently active patrol slot for PTZ cams
-            "hubMac": None,                    # MAC address of associated hub device (if any)
-            "isPoorNetwork": False,            # Whether the device has poor network quality
-            "stopStreamLevel": None,           # Stream level at which to stop streaming
-            "downScaleMode": 0,                # Current downscale configuration
-            "isExtenderInstalledEver": False,  # Whether an extender was ever installed
-            "isWaterproofCaseAttached": False, # Whether waterproof case is attached
-            "isMissingRecordingDetected": False,# Flag if any recordings are missing
-            "userConfiguredAp": False,         # If user manually set up the AP
-            "hasRecordings": True,             # Whether the device has stored recordings
-            "videoCodec": "h264",              # Currently active video codec
-            "videoCodecState": 0,              # Internal state of codec switching
-            "videoCodecSwitchingSince": None,  # Time since codec switching started
-            "videoCodecLastSwitchAt": None,    # Timestamp of last codec switch
-            "enableNfc": False,                # Whether NFC is enabled (e.g. for access control)
-            "isThirdPartyCamera": False,       # True if it's an ONVIF/third-party camera
-            "isPairedWithAiPort": False,       # True if paired with an AI port device
-            "streamingChannels": [],           # Streaming channel definitions
-            "isAdoptedByAccessApp": False,     # Whether adopted by UniFi Access
-            "ptzControlEnabled": True,         # Pan-tilt-zoom control enabled
-            "hallwayMode": "disabled",         # Hallway view mode status
-            "wiredConnectionState": {"phyRate": 100},  # Wired connection physical rate
-            "wifiConnectionState": {           # Wi-Fi connection status
-                "channel": None,
-                "frequency": None,
-                "phyRate": None,
-                "txRate": None,
-                "signalQuality": None,
-                "ssid": None,
-                "bssid": None,
-                "apName": "",                  # Access Point name
-                "experience": None,
-                "signalStrength": None,
-                "connectivity": None
-            },
-            "channels": [],                    # List of stream/video channels
-            "ispSettings": {},                 # ISP-specific settings
-            "audioSettings": {},               # Microphone/audio configurations
-            "talkbackSettings": {},            # Two-way talk feature configuration
-            "osdSettings": {},                 # On-screen display settings
-            "ledSettings": {},                 # LED behavior settings
-            "speakerSettings": {},             # Speaker volume/config
-            "recordingSettings": {},           # Motion/schedule-based recording setup
-            "smartDetectSettings": {},         # AI-based detection config
-            "recordingSchedulesV2": [],        # Advanced recording schedule definitions
-            "motionZones": [],                 # Motion detection zone definitions
-            "privacyZones": [],                # Video privacy mask zones
-            "smartDetectZones": [],            # Smart detection zone definitions
-            "secondLensSmartDetectZones": [],  # Smart detection for dual lens
-            "smartDetectLines": [],            # Smart detection lines (crossing lines)
-            "smartDetectLoiterZones": [],      # Loitering detection zones
-            "stats": {},                       # Performance and usage statistics
-            "featureFlags": {},                # Feature toggles for experimental features
-            "tiltLimitsOfPrivacyZones": {},    # Privacy tilt boundaries
-            "lcdMessage": {},                  # LCD message configuration (e.g., doorbell screen)
-            "lenses": [],                      # Multiple lens configuration
-            "streamSharing": {},               # Public/private stream sharing settings
-            "homekitSettings": {},             # Apple HomeKit integration settings
-            "shortcuts": [],                   # User-defined shortcuts
-            "alarms": {},                      # Alarm settings (doorbell or smart detection)
-            "extendedAiFeatures": {},          # AI-based advanced feature settings
-            "thirdPartyCameraInfo": {},        # Metadata for ONVIF/third-party cams
-            "fingerprintSettings": {},         # Access control fingerprint config
-            "fingerprintState": {},            # Fingerprint access state
-            "nfcSettings": {},                 # NFC reader settings
-            "nfcState": {},                    # Current NFC access state
-            "accessDeviceMetadata": {},        # Metadata for access control devices
-            "id": "",                          # Internal camera/device ID
-            "nvrMac": "",                      # MAC address of the controller/NVR
-            "displayName": "",                 # Display name shown in the Protect UI
-            "isConnected": True,               # True if the device is currently online
             "platform": "",                    # Platform string (hardware type)
-            "hasSpeaker": True,                # Whether the camera has a built-in speaker
-            "hasWifi": False,                  # Whether Wi-Fi is supported
-            "audioBitrate": 64000,             # Audio bitrate setting (bps)
-            "canManage": False,                # If current user can manage the device
-            "isManaged": False,                 # Whether device is fully managed/adopted
             "marketName": "",                  # Commercial model name
-            "is4K": False,                     # True if supports 4K resolution
-            "is2K": True,                      # True if supports 2K resolution
-            "currentResolution": "2K",         # Active streaming resolution
-            "supportedScalingResolutions": ["HD", "2K"],  # List of resolutions that can be downscaled to
-            "hdrType": "auto",                 # HDR configuration (e.g., auto, on, off)
-            "aiPortCapacityPoints": 0.25,      # AI port usage capacity
-            "modelKey": "camera"               # Unique type key in the UniFi API system
+            "canAdopt": True,
+            "logging": {
+                "level": "INFO",          # a root/fallback level
+                "api": { "level": "DEBUG" },
+                "discovery": { "level": "INFO" },
+                "uptime": { "level": "INFO" },
+                "wss": { "level": "DEBUG" }
+            }
         }
 
     def __getitem__(self, key):
         """
-        Thread-safe read access to a setting.
-
+        Thread-safe read access to a (possibly nested) setting.
+        
         Usage:
-            value = settings["isConnected"]
+            mac = settings["uplinkDevice.mac"]
         """
         with self._lock:
-            return self.settings[key]
+            value = self._get_nested_value(key, default=None)
+            if value is None and not self.__contains__(key):
+                raise KeyError(key)
+            return value
 
     def __setitem__(self, key, value):
         """
-        Thread-safe write access to a setting. Automatically persists to disk.
+        Thread-safe write access to a (possibly nested) setting. Automatically persists to disk.
 
         Usage:
-            settings["isUpdating"] = True
+            settings["uplinkDevice.mac"] = "00:11:22:33:44:55"
         """
         with self._lock:
-            self.settings[key] = value
-            self._save()
+            if self._set_nested_value(key, value):
+                self._save()
 
     def __contains__(self, key):
         """
-        Thread-safe key existence check.
+        Thread-safe key existence check for nested keys.
 
         Usage:
-            if "mac" in settings:
+            if "uplinkDevice.mac" in settings:
                 ...
         """
         with self._lock:
-            return key in self.settings
+            return self._get_nested_value(key, default=None) is not None
 
     def get(self, key, default=None):
         """
-        Thread-safe retrieval with fallback.
+        Thread-safe retrieval with fallback for nested keys.
 
         Usage:
-            mac = settings.get("mac", "00:00:00:00:00:00")
+            mac = settings.get("uplinkDevice.mac", "00:00:00:00:00:00")
         """
         with self._lock:
-            return self.settings.get(key, default)
+            return self._get_nested_value(key, default)
 
     def update(self, updates: dict):
         """
-        Thread-safe bulk update. Automatically persists to disk.
+        Thread-safe bulk update (flat keys only).
+        Automatically persists to disk.
 
         Usage:
             settings.update({
@@ -330,28 +163,48 @@ class CameraSettings:
             })
         """
         with self._lock:
-            self.settings.update(updates)
-            self._save()
+            changed = False
+            for k, v in updates.items():
+                changed |= self._set_nested_value(k, v)
+            if changed:
+                self._save()
+
+    def _get_nested_value(self, dotted_key, default=None):
+        """Internal helper to retrieve nested values using dot-notation."""
+        keys = dotted_key.split(".")
+        value = self.settings
+        for key in keys:
+            if not isinstance(value, dict) or key not in value:
+                return default
+            value = value[key]
+        return value
 
     def _save(self):
         with self._lock:
             with open(self.settings_file, "w") as f:
-                json.dump(self.settings, f, indent=2)
+                json.dump(self.settings, f, indent=4)
 
-    def _get_nested_value(self, dotted_key, default=None):
-        """
-        Safely gets a nested value like 'uplinkDevice.mac'.
-        Returns `default` if any part of the path is missing.
-        """
+    def _set_nested_value(self, dotted_key, value, overwrite_non_dict=False) -> bool:
+        """Set nested value using dot-notation. Return True if it changed."""
         keys = dotted_key.split(".")
-        value = self.settings
-        for key in keys:
-            if not isinstance(value, dict):
-                return default
-            value = value.get(key, default)
-            if value is default:
-                break
-        return value
+        d = self.settings
+        for key in keys[:-1]:
+            cur = d.get(key)
+            if cur is None:
+                cur = {}
+                d[key] = cur
+            elif not isinstance(cur, dict):
+                if not overwrite_non_dict:
+                    raise TypeError(f"Cannot descend into non-dict at '{key}' for '{dotted_key}'")
+                cur = {}
+                d[key] = cur
+            d = cur
+        last = keys[-1]
+        if last in d and d[last] == value:
+            return False
+        d[last] = value
+        self._dirty = True
+        return True
 
     def mac_bytes(self, key="mac"):
         """
@@ -364,10 +217,12 @@ class CameraSettings:
         """
         with self._lock:
             mac_str = self._get_nested_value(key)
-        if mac_str:
+        if not mac_str:
+            raise RuntimeError("MAC address is missing in settings.")
+        try:
             return bytes.fromhex(mac_str.replace(":", ""))
-        return None
-
+        except ValueError:
+            raise RuntimeError(f"Malformed MAC address: {mac_str!r}")
 
     def ip_bytes(self, key="host"):
         """
@@ -380,9 +235,9 @@ class CameraSettings:
         """
         with self._lock:
             ip_str = self._get_nested_value(key)
-        if ip_str:
-            try:
-                return socket.inet_aton(ip_str)
-            except OSError:
-                return None
-        return None
+        if not ip_str:
+            raise RuntimeError("IP address is missing in settings.")
+        try:
+            return socket.inet_aton(ip_str)
+        except OSError:
+            raise RuntimeError(f"Malformed IP address: {ip_str!r}")
