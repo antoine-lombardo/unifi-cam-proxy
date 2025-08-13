@@ -19,14 +19,14 @@ Due to significant changes in UniFi Protect, this project is currently being rew
 While the core functionality will remain the same, several improvements are planned — including better support for adoption, motion events, and PTZ controls.
 
 ## Roadmap
-- [x] Device Discovery
-- [x] Camera Adoption
-  - [x] Handle `POST /api/1.2/manage`
-  - [ ] Implement ongoing API message handling
-- [ ] WSS
-  - [ ] 🛑 WSS adoption handshake (currently missing endpoint)
-  - [ ] Simulate RTSP stream output
-  - [ ] 38934 Handle motion detection event simulation and PTZ
+| Step | Direction           | Port   | Protocol  | Purpose                              | Replicated  |
+| ---- | ------------------- | ------ | --------- | ---------------------------------    | ------------|
+| 1    | Controller → Camera | 10001  | UDP       | Discovery                            | ✅          |
+| 2    | Controller → Camera | 443    | HTTPS     | Adoption command (manage)            | ✅          |
+| 3    | Camera → Controller | 7442   | WSS       | Authenticated WebSocket handshake    | ✅          |
+| 4    | Controller → Camera | 7442   | WSS       | Sends settings + adoption details    |             |
+| 5a   | Camera → Controller | 7447   | RTSP      | Raw video stream (depends on config) |             |
+| 5b   | Controller ↔ Camera | 7550   | WSS       | Event messages, status, commands     |             |
 
 ## Starting The Dev Container
 To get started:
@@ -189,16 +189,6 @@ during normal operation you cammera maintains active connection to 3 ports: 7750
 ```
 ss -tnp | grep 'replace_with_your_camera_IP'
 ```
-
-## Camera adoption sequance
-| Step | Direction           | Port   | Protocol  | Purpose                           | Replicated  |
-| ---- | ------------------- | ------ | --------- | --------------------------------- | ------------|
-| 1    | Controller → Camera | 10001  | UDP       | Discovery                         | ✅          |
-| 2    | Controller → Camera | 443    | HTTPS     | Adoption command (manage)         | ✅          |
-| 3    | Camera → Controller | 7442   | WSS       | Authenticated WebSocket handshake |             |
-| 4    | Controller → Camera | 7442   | WSS       | Sends settings + adoption details |             |
-| 5a   | Camera → Controller | 7447 | RTSP     | Raw video stream (depends on config) |             |
-| 5b   | Controller ↔ Camera | 7550 | WSS      | Event messages, status, commands     |             |
 
 # UniFi Camera FLV & extendedFlv Stream Format
 
