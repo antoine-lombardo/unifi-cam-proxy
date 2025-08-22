@@ -8,6 +8,12 @@ import threading, time, logging, signal
 from Unifi.upload_server import start_upload_server
 
 def main():
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+        )
+
     settings = CameraSettings()
 
     # Logging levels from settings (with sane fallbacks)
