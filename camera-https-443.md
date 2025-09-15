@@ -1,4 +1,38 @@
-`https://192.168.1.222:443`
+Service: `lighttpd`
+
+Command: `/bin/lighttpd -D -f /etc/lighttpd.conf`
+
+Listening to: `https://192.168.1.222:443`
+
+`/etc/lighttpd.conf`
+```
+server.document-root = "/usr/www"
+static-file.disable-pathinfo = "enable"
+include "/usr/etc/lighttpd/modules.conf"
+include "/usr/etc/lighttpd/mimetypes.conf"
+include "/usr/etc/lighttpd/lighttpd.conf"
+
+server.modules += ( "mod_access" , "mod_redirect" )
+
+$SERVER["socket"] == ":443" {
+protocol = "https://"
+ssl.engine = "enable"
+ssl.disable-client-renegotiation = "enable"
+ssl.pemfile = "/etc/server.pem"
+ssl.ec-curve = "prime256v1"
+ssl.use-sslv2 = "disable"
+ssl.use-sslv3 = "disable"
+ssl.honor-cipher-order = "enable"
+ssl.cipher-list = "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256"
+} else $HTTP["scheme"] == "http" {
+    $HTTP["url"] !~ "^/snap.jpeg$" {
+        $HTTP["host"] =~ ".*"  {
+             url.redirect = ( ".*" => "https://%0" )
+        }
+    }
+}
+```
+
 
 ## Login Request
 
