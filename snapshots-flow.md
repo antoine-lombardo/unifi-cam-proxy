@@ -6,7 +6,7 @@
 `ref: 255342`
 
 ```json
-{"from":"UniFiVideo","to":"ubnt_avclient","responseExpected":true,"functionName":"GetRequest","messageId":10102,"inResponseTo":0,"payload":{"what":"snapshot","uri":"https://10.30.50.1:7444/internal/camera-upload/DDUmF8TTL0JWZ8iJoPUYwyJPYrlzdNTL","timeoutMs":60000,"quality":"medium"}}
+{"from":"UniFiVideo","to":"ubnt_avclient","responseExpected":true,"functionName":"GetRequest","messageId":10102,"inResponseTo":0,"payload":{"what":"snapshot","uri":"https://192.168.1.1:7444/internal/camera-upload/DDUmF8TTL0JWZ8iJoPUYwyJPYrlzdNTL","timeoutMs":60000,"quality":"medium"}}
 ```
 
 ## 2. Camera generates the snapshot internally then respond to the controller (WSS port 7442)
@@ -27,7 +27,7 @@
 
 ```http
 POST /internal/camera-upload/DDUmF8TTL0JWZ8iJoPUYwyJPYrlzdNTL HTTP/1.1
-Host: 10.30.50.1:7444
+Host: 192.168.1.1:7444
 Accept: */*
 Content-Length: 251406
 Content-Type: multipart/form-data; boundary=------------------------9c29bb6a226f9e14
@@ -63,7 +63,7 @@ Vary: Origin
 Access-Control-Allow-Credentials: true
 Content-Type: application/json; charset=utf-8
 Content-Length: 16
-ETag: W/"10-oV4hJxRVSENxc/wX8+mA4/Pe4tA"
+ETag: W/"1*************************e4tA"
 Date: Mon, 15 Sep 2025 20:46:02 GMT
 Connection: keep-alive
 Keep-Alive: timeout=5
