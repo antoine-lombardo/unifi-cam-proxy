@@ -3,10 +3,10 @@
 ## 1. Discovery Request
 
 - Protocol: `UDP`
-- Source Host: `192.168.1.222 (Camera)`
-- Source Port: `10001`
-- Destination Host: `192.168.1.1 (Controller)`
-- Destination Port: `41117`
+- Source Host: `192.168.1.1 (Controller)`
+- Source Port: `41117`
+- Destination Host: `255.255.255.255 (Bropadcast)`
+- Destination Port: `10001`
 
 
 ### 1.1. Discovery Request Schema
@@ -15,10 +15,34 @@
 | ------------- | -------- | --------------- | -------- |----------------- | --------------- |
 | VERSION       | 1 byte   | Always `0x01`   | UInt8    | `01`             | `1`             |
 | COMMAND       | 1 byte   | Always `0x00`   | Enum     | `00`             | `CMD_INFO`      |
+| Payload Size  | 2 bytes  | Always `0x0000` | UInt16BE | `00 00`          | `0`             |
+
+
+### 1.2. Complete Discovery Request
+
+```
+0000   01 00 00 00
+```
+
+## 2. Discovery Response
+
+- Protocol: `UDP`
+- Source Host: `192.168.1.222 (Camera)`
+- Source Port: `10001`
+- Destination Host: `192.168.1.1 (Controller)`
+- Destination Port: `41117`
+
+
+### 2.1. Discovery Response Schema
+
+| Field         | Size     | Description     | Type     |  Encoded Example | Decoded Example |
+| ------------- | -------- | --------------- | -------- |----------------- | --------------- |
+| VERSION       | 1 byte   | Always `0x01`   | UInt8    | `01`             | `1`             |
+| COMMAND       | 1 byte   | Always `0x00`   | Enum     | `00`             | `CMD_INFO`      |
 | Payload Size  | 2 bytes  | Payload Length  | UInt16BE | `00 9a`          | `154`           |
 | Payload       | Variable | Payload Content |          |                  |                 |
 
-### 1.2. Discovery Payload Schema
+### 2.2. Discovery Payload Schema
 
 | Field                              | Size     | Description                                             | Type     | Encoded Example                    | Decoded Example     |
 | ---------------------------------- | -------- | ------------------------------------------------------- | -------- | ---------------------------------- | -------------------- |
@@ -54,7 +78,7 @@
 | DEVICE_DEFAULT_CREDENTIALS - Size  | 2 bytes  | Always `0x0001`                                         | UInt16BE | `00 01`                            | `1`                  |
 | DEVICE_DEFAULT_CREDENTIALS - Value | 1 byte   | Default Credential Version                              | N/A      | `03`                               |                      |
 
-### 1.3. Complete Discovery Request
+### 2.3. Complete Discovery Response
 
 ```
 0000   01 00 00 9a 02 00 0a 74 ** ** ** db 91 c0 a8 01
@@ -69,7 +93,7 @@
 0090   ** ** ** ** ** ** 61 39 30 64 2c 00 01 03
 ```
 
-## 2. Adoption Request
+## 3. Adoption Request
 
 - Protocol: `HTTPS`
 - Path: `/api/1.2/manage`
@@ -77,7 +101,7 @@
 - Destination Host: `192.168.1.222 (Camera)`
 - Destination Port: `443`
 
-### 2.1. Request
+### 3.1. Request
 
 ```http
 POST /api/1.2/manage HTTP/1.1
@@ -89,7 +113,7 @@ Connection: keep-alive
 {"username":"ui","password":"ui","mgmt":{"username":"ui","password":"ui","hosts":["192.168.1.1:7442"],"token":"0q5y************************rXGO","protocol":"wss","mode":0,"nvr":"UDM-PRO-SE","controller":"Protect","consoleId":"dcb6****-****-****-****-********2b47","consoleName":"**********"}}
 ```
 
-### 2.2. Response
+### 3.2. Response
 
 ```http
 HTTP/1.1 200 OK
@@ -103,7 +127,7 @@ Server: lighttpd
 {"mgmt":{"consoleId":"dcb6****-****-****-****-********2b47","consoleName":"**********","controller":"Protect","hosts":["192.168.1.1:7442"],"mode":0,"nvr":"UDM-PRO-SE","password":"ui","protocol":"wss","token":"0q5y************************rXGO","username":"ui"}}
 ```
 
-## 3. Connection to WSS
+## 4. Connection to WSS
 
 - Protocol: `HTTPS & WSS`
 - Path: `/camera/1.0/ws?token=0q5y************************rXGO`
@@ -111,7 +135,7 @@ Server: lighttpd
 - Destination Host: `192.168.1.1 (Controller)`
 - Destination Port: `7442`
 
-### 2.1. Request
+### 4.1. Request
 
 ```http
 GET /camera/1.0/ws?token=0q5y************************rXGO HTTP/1.1
@@ -134,7 +158,7 @@ Adopted: false
 
 ```
 
-### 2.2. Response
+### 4.2. Response
 
 ```http
 HTTP/1.1 101 Switching Protocols
